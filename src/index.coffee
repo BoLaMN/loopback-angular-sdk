@@ -1,18 +1,20 @@
 { isEmpty, includes, compact, clone } = require 'lodash'
 
+modelInfo = require './model'
+
 module.exports = (app, opts = {}) ->
   root = app.get 'restApiRoot'
   { adapter } = app.handler 'rest'
 
-  deepSet = (models, path, action, modelName) ->
-    properties = path.split '.'
-
+  deepSet = (models, properties, newProp, action, modelName) ->
     currentObject = models[modelName]
     lastObject = currentObject
 
     currentRelations = app.models[modelName].relations
 
     embeds = []
+
+    properties.push newProp
 
     while properties.length
       property = properties.shift()
@@ -25,6 +27,10 @@ module.exports = (app, opts = {}) ->
       if property not in [ 'scopes', 'methods', 'aliases', 'url' ]
         if currentRelations[property]?.modelTo
           rel = currentRelations[property]
+
+          modelTo = rel.modelTo
+
+          currentObject[property].model = modelTo.modelName
 
           if rel.embed and not includes lastObject.embeds, rel.keyFrom
             lastObject.embeds ?= []
@@ -45,6 +51,7 @@ module.exports = (app, opts = {}) ->
     modelName = method.restClass.name
 
     models[modelName] ?= {}
+    models[modelName].properties = modelInfo app.models[modelName]
 
     if /create/.test method.name
       createMany = Object.create(method)
@@ -74,7 +81,7 @@ module.exports = (app, opts = {}) ->
 
     method.sharedMethod.aliases.forEach (alias) ->
       models[modelName].aliases ?= {}
-      models[modelName].aliases[alias] = method.name
+      models[modelName].aliases[alias] = method.name.replace 'prototype.', ''
 
     if method.sharedMethod.isStatic
       models[modelName].methods ?= {}
@@ -90,30 +97,29 @@ module.exports = (app, opts = {}) ->
       if arrParts.length > 1
         arrParts.shift()
 
-      # console.log modelName, arrParts
+      if prop is arrParts[0]
+        models[modelName].methods ?= {}
+        action.params.id = '@id'
+        models[modelName].methods[prop] = action
+      else
+        arrParts = arrParts.join '.scopes.'
+        arrObject = [ 'scopes' ].concat(arrParts.split('.')).concat [ 'methods' ]
 
-      arrParts = arrParts.join '.scopes.'
+        deepSet models, arrObject, prop, action, modelName
 
-      strObject = 'scopes.' + arrParts + '.methods.'
-      deepSet models, strObject + prop, action, modelName
-
-      if createMany
-        deepSet models, strObject + 'createMany', action, modelName
+        if createMany
+          deepSet models, arrObject, 'createMany', action, modelName
     models
-
-  host = app.get 'host'
-  port = app.get 'port'
 
   servicesJS =
     models: adapter.allRoutes().reduce reducer, {}
-    url: 'http://' + host + ':' + port
 
   configJSON = JSON.stringify servicesJS, null, '\t'
 
   """
-    angular.module('#{ opts.name or (app.get('serverName') + '.services') }', [ 'loopback.provider' ])
+    angular.module('#{ opts.name or (app.get('serverName') + '.services') }', [ 'loopback.sdk' ])
 
-    .config(["LoopBackResourceProvider", function(LoopBackResourceProvider) {
-      LoopBackResourceProvider.setConfig(#{configJSON});
+    .config(["ResourceProvider", function(ResourceProvider) {
+      ResourceProvider.setConfig(#{configJSON});
     }]);
   """
