@@ -8,7 +8,6 @@ module.exports = (app, opts = {}) ->
 
   deepSet = (models, properties, newProp, action, modelName) ->
     currentObject = models[modelName]
-    lastObject = currentObject
 
     currentRelations = app.models[modelName].relations
 
@@ -32,17 +31,19 @@ module.exports = (app, opts = {}) ->
 
           currentObject[property].model = modelTo.modelName
 
-          if rel.embed and not includes lastObject.embeds, rel.keyFrom
-            lastObject.embeds ?= []
-            lastObject.embeds.push rel.keyFrom
+          models[modelTo.modelName] ?= {}
+          models[modelTo.modelName].properties = modelInfo app.models[modelTo.modelName]
+
+          currentRelations = modelTo.relations
 
       if not properties.length
         action.params.id = '@id'
 
         currentObject[property] = action
 
-      lastObject = currentObject
       currentObject = currentObject[property]
+
+    #console.log models[modelName].embeds
 
     models
 
