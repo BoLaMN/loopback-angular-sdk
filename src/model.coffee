@@ -15,7 +15,7 @@ formatInfo = (definition) ->
       subtype = type[0]
 
       if subtype.definition
-        subtype = subtype.definition.name
+        subtype = subtype.definition
 
       type = [ subtype?.modelName or subtype?.name ]
 
